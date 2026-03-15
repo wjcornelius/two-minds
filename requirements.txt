@@ -1,0 +1,25 @@
+# Core agent loop
+anthropic>=0.40.0
+requests>=2.31.0
+python-dotenv>=1.0.0
+python-dateutil>=2.8.0
+schedule>=1.2.0
+PyYAML>=6.0
+rich>=13.0.0
+aiofiles>=24.0.0
+
+# Memory
+lancedb>=0.5.0
+numpy>=1.24.0
+
+# Research & tools
+arxiv>=2.1.0
+feedparser>=6.0.0
+beautifulsoup4>=4.12.0
+duckduckgo_search>=6.0.0
+
+# Chat interface (chloe_chat.py)
+chainlit>=1.0.0
+
+# GUI dashboard (gui.py)
+customtkinter>=5.2.0

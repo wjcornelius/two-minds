@@ -1,0 +1,24 @@
+venv/
+__pycache__/
+*.pyc
+*.db
+*.egg-info/
+dist/
+build/
+.env
+
+# All runtime data — personal, regenerated each session
+data/
+data_faith/
+data_*/
+logs/
+
+# LanceDB binaries
+*.lance
+*.txn
+*.manifest
+
+# Secrets
+*.pid_export
+api_cap_override.json
+agent_output.log

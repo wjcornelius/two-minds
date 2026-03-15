@@ -1,0 +1,80 @@
+/* Offspring toolbar — persistent buttons injected into the chat UI */
+
+#offspring-toolbar {
+    position: fixed;
+    top: 10px;
+    right: 14px;
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Shared button base */
+#offspring-toolbar button {
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+}
+
+/* Biographer button — dark green */
+#offspring-bio-btn {
+    background: #2a5c45;
+    color: #e8f5e9;
+    border: 1px solid #3d8b65;
+}
+
+#offspring-bio-btn:hover {
+    background: #3d8b65;
+    border-color: #5cb882;
+}
+
+#offspring-bio-btn:active {
+    background: #1e4430;
+}
+
+/* Stop All button — dark red */
+#offspring-stop-btn {
+    background: #5c1a1a;
+    color: #fde8e8;
+    border: 1px solid #8b3d3d;
+}
+
+#offspring-stop-btn:hover {
+    background: #8b3333;
+    border-color: #c05050;
+}
+
+#offspring-stop-btn:active {
+    background: #3a0f0f;
+}
+
+#offspring-stop-btn:disabled {
+    opacity: 0.7;
+    cursor: default;
+}
+
+#offspring-stop-hint {
+    font-size: 10px;
+    color: #778;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+    user-select: none;
+}
+
+#offspring-toolbar .toolbar-status {
+    font-size: 11px;
+    color: #aaa;
+    display: none;  /* shown briefly after click */
+}
+
+#offspring-toolbar .toolbar-status.visible {
+    display: inline;
+}
