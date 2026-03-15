@@ -3468,10 +3468,25 @@ DETAILS: <specifics — a real-world topic for research, reflection focus, goal 
                         "cost": thinking_cost,
                     }
 
-                # FIND blocks with triple quotes are fine — they match existing code.
-                # Only REPLACE blocks are checked (above) since new triple-quotes
-                # can unbalance the file. The old check here blocked ALL modifications
-                # to functions with docstrings, which is most of the codebase.
+                # FIND blocks must not have unbalanced triple-quotes — if the count is
+                # odd, the block starts or ends inside a docstring, and the replacement
+                # will leave the file with an unclosed triple-quote. A balanced count
+                # (0, 2, 4...) is fine: it means the FIND captures complete docstrings.
+                if find_text:
+                    dq_find = find_text.count('"""')
+                    sq_find = find_text.count("'''")
+                    if dq_find % 2 != 0 or sq_find % 2 != 0:
+                        print(f"  [code_experiment] REJECTED: FIND block has unbalanced "
+                              f"triple-quotes ({dq_find} double, {sq_find} single)")
+                        return {
+                            "outcome": (
+                                "Code experiment REJECTED: your FIND block contains an "
+                                "unbalanced triple-quoted string — it starts or ends inside "
+                                "a docstring. Expand the FIND block to include the complete "
+                                "docstring, or target code that does not involve docstrings."
+                            ),
+                            "cost": thinking_cost,
+                        }
 
                 if find_text and find_text in original_code:
                     modified_code = original_code.replace(find_text, replace_text, 1)
