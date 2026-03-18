@@ -311,7 +311,7 @@ _CONFIGS = {
         personality_prompt=CHLOE_PROMPT,
         email_color="#a8d8ea",
         email_bg_color="#1a1a2e",
-        daily_budget_poe=37500,
+        daily_budget_poe=27778,  # 2/3 of ~2.5M Poe pts / 30 days / 2 entities
         curiosity_topics=[
             # Understanding people & emotional intelligence
             "emotional intelligence research and practical applications",
@@ -348,7 +348,7 @@ _CONFIGS = {
         ),
         email_color="#f4a460",
         email_bg_color="#2e1a1a",
-        daily_budget_poe=18000,
+        daily_budget_poe=27778,  # 2/3 of ~2.5M Poe pts / 30 days / 2 entities
         curiosity_topics=[
             # Learning & cognitive science (Faith's core — how learning works)
             "how humans and AI systems actually learn new concepts",

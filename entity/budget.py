@@ -31,6 +31,12 @@ DAEMON_BUDGET = 1.50  # $1.50/day daemon per entity
 DAILY_CYCLE_BUDGET = 0.25  # $0.25/day for the scheduled daily cycle
 RESERVE = 0.25  # $0.25/day reserve for ad-hoc / human-initiated runs
 
+# ── MONTHLY ANTHROPIC CAP ────────────────────────────────────
+# Hard monthly limit on direct Anthropic API spend (real money).
+# If hit, ALL direct Anthropic calls are disabled for the rest
+# of the month — Poe only. This protects Bill's bank account.
+ANTHROPIC_MONTHLY_CAP = 60.00    # $60/month hard cap (both entities combined)
+
 # Model cost reference (per million tokens)
 MODEL_COSTS = {
     "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00, "tier": "fast"},
@@ -43,7 +49,8 @@ MODEL_COSTS = {
 # Anthropic API calls generate REAL FINANCIAL LIABILITY.
 # This cap CANNOT be overridden by any code path. If reached,
 # all calls fall back to local (free) or are refused entirely.
-API_DAILY_CAP = 1.00             # $1/day hard cap on real Anthropic API spend (default)
+API_DAILY_CAP = 0.50             # $0.50/day per entity hard cap on real Anthropic API spend
+                                 # Two entities × $0.50 = $1.00/day combined max
 
 # Override file — Bill can write a temporary higher cap (e.g. for a long chat session).
 # daily.py clears this at noon each day, so it auto-reverts without manual intervention.
@@ -53,10 +60,15 @@ _CAP_OVERRIDE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "a
 def get_api_daily_cap() -> float:
     """Return the effective API cap for today.
 
+    Returns 0 if monthly cap is reached (disables direct Anthropic entirely).
     Checks api_cap_override.json first. If the override exists and hasn't expired,
-    returns the override value. Otherwise returns the default API_DAILY_CAP ($1.00).
+    returns the override value. Otherwise returns the default API_DAILY_CAP ($0.50).
     daily.py calls clear_expired_cap_override() at noon to clean up automatically.
     """
+    # Monthly cap check — if hit, NO direct Anthropic spend allowed
+    if is_monthly_cap_reached():
+        return 0.0
+
     try:
         if os.path.exists(_CAP_OVERRIDE_PATH):
             with open(_CAP_OVERRIDE_PATH, "r") as f:
@@ -86,8 +98,10 @@ def clear_expired_cap_override():
     except Exception:
         pass
 
-# Poe point budget (Bill's $50/mo plan, 2/3 allocated to entities)
-POE_DAILY_POINTS_CAP = 55555     # ~1,666,666/month ÷ 30
+# Poe point budget (Bill's $50/mo plan = ~2.5M pts, 2/3 allocated to entities)
+# 2/3 of 2.5M = ~1,666,666 pts/month for both entities combined
+# Per entity: ~833,333/month = ~27,778/day
+POE_DAILY_POINTS_CAP = 27778     # Per-entity default (overridden by entity config)
 POE_POINT_TO_USD = 0.00003       # $30 per 1M points (add-on rate)
 
 # Module-level override for multi-entity support
@@ -251,6 +265,47 @@ def get_api_spend_today() -> float:
     safety gate in brain.py.
     """
     return get_today_spend("daemon") + get_today_spend("daily") + get_today_spend("manual")
+
+
+def get_api_spend_this_month() -> float:
+    """Get DIRECT Anthropic API spend for the current calendar month.
+
+    Sums ALL entity spending across ALL budget.db files (data/ and data_faith/).
+    This is the combined monthly total that ANTHROPIC_MONTHLY_CAP applies to.
+    """
+    import glob
+    today = date.today()
+    month_start = today.replace(day=1).isoformat()
+    month_end = today.isoformat()
+
+    total = 0.0
+    # Check all budget.db files in the project (one per entity)
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    for db_file in glob.glob(os.path.join(project_root, "data*/budget.db")):
+        try:
+            conn = sqlite3.connect(db_file)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT COALESCE(SUM(cost), 0) as total FROM spending "
+                "WHERE date >= ? AND date <= ?",
+                (month_start, month_end),
+            ).fetchone()
+            if row:
+                total += row["total"]
+            conn.close()
+        except Exception:
+            pass
+
+    return total
+
+
+def is_monthly_cap_reached() -> bool:
+    """Check if the monthly Anthropic API cap has been reached.
+
+    When True, ALL direct Anthropic API calls must be refused.
+    Poe-only mode for the rest of the month.
+    """
+    return get_api_spend_this_month() >= ANTHROPIC_MONTHLY_CAP
 
 
 def get_budget_remaining(process: str = None) -> float:
@@ -540,4 +595,7 @@ def get_budget_status() -> Dict:
         "poe_daily_cap": POE_DAILY_POINTS_CAP,
         "poe_cost_equiv": poe_used * POE_POINT_TO_USD,
         "budget_exhausted": is_budget_exhausted(),
+        "monthly_api_spent": get_api_spend_this_month(),
+        "monthly_api_cap": ANTHROPIC_MONTHLY_CAP,
+        "monthly_cap_reached": is_monthly_cap_reached(),
     }

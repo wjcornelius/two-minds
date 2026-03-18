@@ -333,12 +333,23 @@ class Brain:
             if self.api_source == "poe" and self._fallback_client:
                 # Check HARD API cap before spending real money
                 try:
-                    from entity.budget import get_api_spend_today, API_DAILY_CAP
+                    from entity.budget import (
+                        get_api_spend_today, get_api_daily_cap as _get_cap,
+                        is_monthly_cap_reached,
+                    )
+                    # Monthly cap — if hit, no direct Anthropic for rest of month
+                    if is_monthly_cap_reached():
+                        raise RuntimeError(
+                            f"Poe failed and MONTHLY Anthropic cap ($60) reached. "
+                            f"REFUSING fallback — Poe only until next month. "
+                            f"Original Poe error: {e}"
+                        )
                     api_spent = get_api_spend_today()
-                    if api_spent >= API_DAILY_CAP:
+                    _daily_cap = _get_cap()
+                    if api_spent >= _daily_cap:
                         raise RuntimeError(
                             f"Poe failed and API cap reached "
-                            f"(${api_spent:.2f}/${API_DAILY_CAP:.2f}). "
+                            f"(${api_spent:.2f}/${_daily_cap:.2f}). "
                             f"REFUSING Anthropic fallback to protect Bill's budget. "
                             f"Original Poe error: {e}"
                         )

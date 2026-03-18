@@ -307,14 +307,17 @@ class Agent:
         self.entity_config = get_entity_config(entity_name)
         print(f"  Entity: {self.entity_config.display_name}")
 
-        # Configure budget module for this entity's data directory
+        # Configure budget module for this entity's data directory and Poe cap
         try:
             from entity.budget import configure as configure_budget
             budget_db = os.path.join(
                 os.path.dirname(__file__),
                 self.entity_config.data_dir_name, "budget.db"
             )
-            configure_budget(db_path=budget_db)
+            configure_budget(
+                db_path=budget_db,
+                poe_daily_cap=self.entity_config.daily_budget_poe,
+            )
             print(f"  Budget DB: {self.entity_config.data_dir_name}/budget.db")
         except Exception as e:
             print(f"  WARNING: Budget configure failed: {e}")
