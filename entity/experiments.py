@@ -209,17 +209,18 @@ class Experimenter:
             )[0] if categories else "reasoning"
 
         # --- CEILING CHECK ---
-        # If ALL categories are at 100%, experimenting is pointless.
-        # Return None so the agent picks a different action instead of
-        # grinding inconclusive experiments forever.
+        # If ALL categories are above the ceiling threshold, experimenting
+        # is pointless.  Return None so the agent picks a different action
+        # instead of grinding inconclusive experiments forever.
+        CEILING_THRESHOLD = 95.0
         categories = scores.get("categories", {})
         min_score = min(
             (d["percentage"] for d in categories.values()),
             default=0,
         )
         print(f"  [experiment] Score range: min={min_score:.0f}%, weakest={weakest_cat}")
-        if min_score >= 100.0:
-            print(f"  [experiment] All categories at 100% — nothing to improve")
+        if min_score >= CEILING_THRESHOLD:
+            print(f"  [experiment] All categories at {CEILING_THRESHOLD}%+ — nothing to improve")
             return None
 
         # --- FAILURE AVOIDANCE ---
@@ -775,29 +776,53 @@ class Experimenter:
         If the weakest category has had too many consecutive failures,
         rotate to a different category. This prevents grinding one
         category for hours when progress has stalled.
+
+        Categories scoring >= CEILING (95%) are skipped entirely — there
+        is no meaningful room for improvement and experiments on them
+        almost always come back inconclusive.
         """
         MAX_CONSECUTIVE_FAILURES = 5  # Give up on a category after 5 straight failures
-
-        # Count recent consecutive failures on the weakest category
-        consecutive_failures = 0
-        for exp in history:  # history is newest-first
-            if exp.get("target_category") == weakest_cat:
-                if exp.get("result") == "failure":
-                    consecutive_failures += 1
-                else:
-                    break  # Had a non-failure, stop counting
-            # Experiments on other categories don't reset the count
-
-        if consecutive_failures < MAX_CONSECUTIVE_FAILURES:
-            return weakest_cat
-
-        # The weakest category is a dead end right now.
-        # Pick the next-weakest category that hasn't stalled.
-        print(f"  [experiment] {weakest_cat} has {consecutive_failures} "
-              f"consecutive failures -- trying a different category")
+        CEILING = 95.0  # Skip categories already at or above this score
 
         categories = scores.get("categories", {})
-        # Sort by score ascending (weakest first), skip the stalled one
+
+        # Helper: is a category eligible (below ceiling and not stalled)?
+        def _is_eligible(cat_name: str) -> bool:
+            pct = categories.get(cat_name, {}).get("percentage", 0)
+            if pct >= CEILING:
+                return False
+            # Check consecutive failures
+            consec = 0
+            for exp in history:
+                if exp.get("target_category") == cat_name:
+                    if exp.get("result") == "failure":
+                        consec += 1
+                    else:
+                        break
+            return consec < MAX_CONSECUTIVE_FAILURES
+
+        # Try the weakest category first
+        if _is_eligible(weakest_cat):
+            return weakest_cat
+
+        # The weakest category is at ceiling or stalled.
+        # Pick the next-weakest eligible category.
+        weakest_pct = categories.get(weakest_cat, {}).get("percentage", 0)
+        if weakest_pct >= CEILING:
+            print(f"  [experiment] {weakest_cat} at {weakest_pct:.0f}% "
+                  f"(above {CEILING}% ceiling) -- skipping")
+        else:
+            consecutive_failures = 0
+            for exp in history:
+                if exp.get("target_category") == weakest_cat:
+                    if exp.get("result") == "failure":
+                        consecutive_failures += 1
+                    else:
+                        break
+            print(f"  [experiment] {weakest_cat} has {consecutive_failures} "
+                  f"consecutive failures -- trying a different category")
+
+        # Sort by score ascending (weakest first)
         sorted_cats = sorted(
             categories.items(),
             key=lambda x: x[1]["percentage"],
@@ -806,22 +831,15 @@ class Experimenter:
         for cat_name, cat_data in sorted_cats:
             if cat_name == weakest_cat:
                 continue
-            # Check this category isn't also stalled
-            cat_failures = 0
-            for exp in history:
-                if exp.get("target_category") == cat_name:
-                    if exp.get("result") == "failure":
-                        cat_failures += 1
-                    else:
-                        break
-            if cat_failures < MAX_CONSECUTIVE_FAILURES:
+            if _is_eligible(cat_name):
                 print(f"  [experiment] Targeting {cat_name} instead "
                       f"({cat_data['percentage']:.0f}%)")
                 return cat_name
 
-        # Everything is stalled -- try to invent a new strategy instead,
+        # Everything is at ceiling or stalled -- try to invent a new strategy
         # and fall back to the weakest category
-        print(f"  [experiment] All categories stalled -- attempting strategy invention")
+        print(f"  [experiment] All categories at ceiling or stalled "
+              f"-- attempting strategy invention")
         new_strat = self.maybe_invent_strategy(verbose=True, tier="local")
         if new_strat:
             print(f"  [experiment] New strategy invented: {new_strat}")

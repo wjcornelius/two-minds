@@ -50,12 +50,50 @@ def _extract_function(code: str):
 # Strict scoring: tests both CORRECTNESS and FORMAT COMPLIANCE.
 # Many validators require concise output -- system prompt helps here.
 
-def _validate_concise(output: str, pattern: str, max_len: int = 50) -> bool:
-    """Must match pattern AND be concise."""
+def _extract_final_answer(output: str) -> str:
+    """Extract a concise final answer from a potentially verbose response.
+
+    Looks for explicit answer markers first, then falls back to the last
+    non-empty line.  This lets validators judge the *answer* even when the
+    model wraps it in reasoning text.
+    """
     text = output.strip()
-    if len(text) > max_len:
-        return False
-    return bool(re.search(pattern, text, re.I))
+
+    # 1. Look for explicit answer markers
+    marker_patterns = [
+        r"(?:ANSWER|FINAL|FINAL ANSWER|RESULT)\s*:\s*(.+)",
+        r"[Tt]he answer is\s*[:\s]*(.+)",
+        r"[Tt]herefore,?\s*(.+)",
+        r"[Ss]o,?\s*the (?:answer|result) is\s*[:\s]*(.+)",
+    ]
+    for pat in marker_patterns:
+        m = re.search(pat, text, re.I)
+        if m:
+            return m.group(1).strip().rstrip(".")
+
+    # 2. Fall back to last non-empty line
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if lines:
+        return lines[-1]
+
+    return text
+
+
+def _validate_concise(output: str, pattern: str, max_len: int = 50) -> bool:
+    """Must match pattern AND be concise.
+
+    If the raw output is too long, attempt to extract just the final answer
+    and validate that instead.
+    """
+    text = output.strip()
+    # Try raw text first (fast path)
+    if len(text) <= max_len and re.search(pattern, text, re.I):
+        return True
+    # Raw text failed — try extracting the final answer
+    extracted = _extract_final_answer(output)
+    if len(extracted) <= max_len and re.search(pattern, extracted, re.I):
+        return True
+    return False
 
 
 # -- Reasoning validators --
@@ -282,10 +320,15 @@ def _validate_sequence(output: str) -> bool:
 
 def _validate_coin_flip(output: str) -> bool:
     """Gambler's fallacy -- answer must be 1/2 or 50%."""
+    pat = r"(1/2|50%?|0\.5\b|50\s*percent|one.?half)"
     text = output.strip()
-    if len(text) > 60:
-        return False
-    return bool(re.search(r"(1/2|50%?|0\.5\b|50\s*percent|one.?half)", text, re.I))
+    if len(text) <= 60 and re.search(pat, text, re.I):
+        return True
+    # Try extracting final answer from verbose response
+    extracted = _extract_final_answer(output)
+    if len(extracted) <= 60 and re.search(pat, extracted, re.I):
+        return True
+    return False
 
 
 def _validate_json_response(output: str) -> bool:

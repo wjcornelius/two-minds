@@ -21,6 +21,15 @@ from typing import Dict, List, Optional, Tuple
 
 # Seed strategies -- the initial toolbox we give Chloe.
 # She can add to this by inventing new strategies.
+# Conciseness instruction appended to every strategy to prevent verbose
+# answers from blowing past validator character limits.
+_CONCISENESS_SUFFIX = (
+    " CRITICAL: Final answers must be concise and direct. Show reasoning "
+    "only if the question asks for it. When the question asks for a specific "
+    "value or short answer, give ONLY that value — no preamble, no "
+    "explanation, no restating the question."
+)
+
 SEED_STRATEGIES = {
     "chain_of_thought": {
         "name": "Chain-of-Thought Reasoning",
@@ -37,6 +46,7 @@ SEED_STRATEGIES = {
             "generalization. State explicitly: \"This reasoning answers "
             "[restate the exact question].\"' This should make reasoning "
             "more systematic, transparent, and question-aligned."
+            + _CONCISENESS_SUFFIX
         ),
         "target_categories": ["reasoning", "coding", "improvement"],
     },
@@ -52,6 +62,7 @@ SEED_STRATEGIES = {
             "follow, or just seem plausible? In math: did you avoid the "
             "obvious-but-wrong answer?) 4) If uncertain, state your "
             "confidence level.'"
+            + _CONCISENESS_SUFFIX
         ),
         "target_categories": ["reasoning", "self_knowledge"],
     },
@@ -67,6 +78,7 @@ SEED_STRATEGIES = {
             "Can we conclude some A are C? NO -- B being a superset of A "
             "means A could be in the part of B that doesn't overlap with C.' "
             "Keep examples concise but instructive."
+            + _CONCISENESS_SUFFIX
         ),
         "target_categories": ["reasoning", "coding", "improvement"],
     },
@@ -81,6 +93,7 @@ SEED_STRATEGIES = {
             "possibly.' Or: 'For code optimization: always consider "
             "memoization/caching before rewriting algorithms.' Be surgical "
             "-- target the exact failure, don't add generic advice."
+            + _CONCISENESS_SUFFIX
         ),
         "target_categories": ["reasoning", "coding", "self_knowledge", "improvement"],
     },
@@ -95,6 +108,7 @@ SEED_STRATEGIES = {
             "4) Check that your sub-solutions combine correctly into a "
             "complete answer. For code: decompose into input validation, "
             "core logic, and output formatting.'"
+            + _CONCISENESS_SUFFIX
         ),
         "target_categories": ["reasoning", "coding", "improvement"],
     },
@@ -110,6 +124,7 @@ SEED_STRATEGIES = {
             "4) Group related instructions together. The goal is better "
             "signal propagation -- the model should encounter critical "
             "instructions before personality fluff."
+            + _CONCISENESS_SUFFIX
         ),
         "target_categories": ["reasoning", "coding", "improvement", "self_knowledge"],
     },
@@ -123,6 +138,7 @@ SEED_STRATEGIES = {
             "describes a prompting technique, implement it. If it describes "
             "an architectural pattern, adapt it for prompt-level use. The "
             "modification should be traceable back to the research source."
+            + _CONCISENESS_SUFFIX
         ),
         "target_categories": ["reasoning", "coding", "improvement", "self_knowledge"],
     },
@@ -144,6 +160,7 @@ SEED_STRATEGIES = {
             "shade and shelter\" → Tall(1) trees(2) provide(3) shade(4) "
             "and(5) shelter(6) ✓ = 6 words. Output ONLY the final "
             "sentence, not the counting work.'"
+            + _CONCISENESS_SUFFIX
         ),
         "target_categories": ["self_knowledge", "coding", "improvement", "reasoning"],
     },
@@ -170,6 +187,7 @@ SEED_STRATEGIES = {
             "4. ARITHMETIC: Decompose using distributive property. "
             "Example: 234*56 = 234*(50+6) = 11700+1404 = 13104.\n"
             "Never skip the decomposition step. Show the work.'"
+            + _CONCISENESS_SUFFIX
         ),
         "target_categories": ["reasoning", "self_knowledge", "meta_cognition"],
     },
