@@ -840,15 +840,17 @@ def save_competencies(data: dict):
 STUCK_THRESHOLD = 5  # Skip competency after this many consecutive failures
 MAX_LEVEL = 50       # High ceiling — we want to find natural plateaus, not artificial ones
 
-# Per-competency level caps — some exercises exceed the local model's capabilities
-# at high levels. Cap these to avoid pointless grinding against a ceiling.
+# Per-competency level caps. Reasoning and coding route to Sonnet via Poe at
+# L11+, so their caps are raised to 25. Other categories use Haiku at L11+,
+# raised from 10→15 to see how far Haiku can push them.
 LEVEL_CAPS = {
-    "practical_reasoning": 10,      # L11+ adversarial traps beyond local model ability
-    "analysis": 10,                 # L11 exercises too difficult for local model
-    "creative_expression": 10,      # L11 exercises too difficult for local model
-    "synthesis": 10,                # L11 exercises too difficult for local model
-    "coding": 7,                    # L8+ code exercises consistently fail on local model
-    "emotional_intelligence": 11,   # L12+ too abstract for structured grading
+    "practical_reasoning": 15,      # Haiku grading at L11+
+    "analysis": 15,                 # Haiku grading at L11+
+    "creative_expression": 15,      # Haiku grading at L11+
+    "synthesis": 15,                # Haiku grading at L11+
+    "coding": 25,                   # Sonnet via Poe at L11+
+    "emotional_intelligence": 15,   # Haiku grading at L12+
+    "reasoning": 25,                # Sonnet via Poe at L11+
 }
 
 
@@ -964,9 +966,16 @@ def generate_exercise(competency: str, level: int, brain, force_local: bool = Fa
             logger.warning(f"No generation prompt for {competency} L{level}")
             return _fallback_exercise(competency, level)
 
-    # Generate exercise — use Poe for better quality when available
-    # L8+ needs better models for sophisticated exercise generation
-    tier = "local" if force_local else ("fast" if level >= 8 else _grading_tier("exercise_generation"))
+    # Generate exercise — route reasoning/coding L11+ to Sonnet ("deep") for
+    # exercises that exceed Haiku's ability. Other L8+ use "fast" (Haiku).
+    if force_local:
+        tier = "local"
+    elif competency in ("reasoning", "coding") and level >= 11:
+        tier = "deep"
+    elif level >= 8:
+        tier = "fast"
+    else:
+        tier = _grading_tier("exercise_generation")
     # Local grind mode: 600 tokens is enough for a concise exercise; 2048 causes 10+ min timeouts.
     # Cloud: keep 2048 for rich comprehension passages.
     gen_max_tokens = 600 if force_local else 2048
@@ -1554,8 +1563,16 @@ Is the student's response correct? Output ONLY:
 CORRECT: yes or no
 FEEDBACK: one sentence of feedback"""
 
-    # L8+: external grading via Haiku to prevent self-grading bias
-    tier = "local" if force_local else ("fast" if level >= 8 else _grading_tier("llm_verify"))
+    # L8+: external grading. Reasoning/coding L11+ use Sonnet for accuracy.
+    competency = exercise.get("competency", "")
+    if force_local:
+        tier = "local"
+    elif competency in ("reasoning", "coding") and level >= 11:
+        tier = "deep"
+    elif level >= 8:
+        tier = "fast"
+    else:
+        tier = _grading_tier("llm_verify")
     result = brain.think(
         prompt=prompt,
         system="You are a strict but fair grader. Grade based on correctness, not style.",
@@ -1600,9 +1617,17 @@ TOTAL: <sum of scores>
 PASSED: <yes if total >= {threshold}, no otherwise>
 FEEDBACK: <one constructive sentence>"""
 
-    # L8+: external grading via Haiku to prevent self-grading bias
+    # L8+: external grading. Reasoning/coding L11+ use Sonnet for accuracy.
     # force_local uses fewer tokens — rubric output is short structured text
-    tier = "local" if force_local else ("fast" if level >= 8 else _grading_tier())
+    competency = exercise.get("competency", "")
+    if force_local:
+        tier = "local"
+    elif competency in ("reasoning", "coding") and level >= 11:
+        tier = "deep"
+    elif level >= 8:
+        tier = "fast"
+    else:
+        tier = _grading_tier()
     max_tokens = 80 if force_local else 300  # SCORES/TOTAL/PASSED/FEEDBACK needs ~60 tokens
     try:
         result = brain.think(

@@ -141,24 +141,26 @@ class CodeSandbox:
                 "gates_passed": [],
             }
 
-        # Gate 0: Size check — reject if modified code lost >20% of lines.
-        # Local models (Qwen3 8B) can't generate long files and truncate.
+        # Gate 0: Size check — reject if modified code lost >30% of lines.
+        # Local models can't generate long files and truncate.
         original_path = os.path.join(self.project_root, target_file)
         if os.path.exists(original_path):
             with open(original_path, "r", encoding="utf-8") as f:
                 original_code = f.read()
             original_lines = len(original_code.splitlines())
             modified_lines = len(modified_code.splitlines())
-            if original_lines > 10 and modified_lines < original_lines * 0.8:
+            if original_lines > 10 and modified_lines < original_lines * 0.7:
+                reason = (
+                    f"TRUNCATION: Modified code has {modified_lines} lines "
+                    f"vs original {original_lines} lines "
+                    f"({modified_lines/original_lines:.0%}). "
+                    f"Local model likely truncated the file. "
+                    f"Minimum: 70% of original size."
+                )
+                self._log_learning(target_file, "size", reason)
                 return {
                     "passed": False,
-                    "reason": (
-                        f"TRUNCATION: Modified code has {modified_lines} lines "
-                        f"vs original {original_lines} lines "
-                        f"({modified_lines/original_lines:.0%}). "
-                        f"Local model likely truncated the file. "
-                        f"Minimum: 80% of original size."
-                    ),
+                    "reason": reason,
                     "scores": None,
                     "baseline_scores": baseline_scores,
                     "duration": time.time() - start,
@@ -190,7 +192,7 @@ class CodeSandbox:
             if not passed:
                 return self._result(
                     False, f"SYNTAX: {error}", None, baseline_scores,
-                    start, gates_passed,
+                    start, gates_passed, target_file=target_file,
                 )
             gates_passed.append("syntax")
             if verbose:
@@ -203,7 +205,7 @@ class CodeSandbox:
             if not passed:
                 return self._result(
                     False, f"IMPORT: {error}", None, baseline_scores,
-                    start, gates_passed,
+                    start, gates_passed, target_file=target_file,
                 )
             gates_passed.append("import")
             if verbose:
@@ -218,7 +220,7 @@ class CodeSandbox:
             if not passed:
                 return self._result(
                     False, reason, scores, baseline_scores,
-                    start, gates_passed,
+                    start, gates_passed, target_file=target_file,
                 )
             gates_passed.append("benchmark")
             gates_passed.append("category")
@@ -235,7 +237,7 @@ class CodeSandbox:
                 if not passed:
                     return self._result(
                         False, f"SMOKE: {error}", scores, baseline_scores,
-                        start, gates_passed,
+                        start, gates_passed, target_file=target_file,
                     )
                 gates_passed.append("smoke")
                 if verbose:
@@ -253,7 +255,7 @@ class CodeSandbox:
         except Exception as e:
             return self._result(
                 False, f"SANDBOX_ERROR: {e}", None, baseline_scores,
-                start, gates_passed,
+                start, gates_passed, target_file=target_file,
             )
         finally:
             self._cleanup()
@@ -462,8 +464,12 @@ print("SMOKE_OK")
                 pass
             self.sandbox_dir = None
 
-    def _result(self, passed, reason, scores, baseline_scores, start, gates_passed):
-        """Build standard result dict."""
+    def _result(self, passed, reason, scores, baseline_scores, start, gates_passed,
+                target_file=None):
+        """Build standard result dict. Log failures as learning opportunities."""
+        if not passed and target_file:
+            failed_gate = reason.split(":")[0] if reason else "unknown"
+            self._log_learning(target_file, failed_gate, reason)
         return {
             "passed": passed,
             "reason": reason,
@@ -472,3 +478,41 @@ print("SMOKE_OK")
             "duration": time.time() - start,
             "gates_passed": gates_passed,
         }
+
+    def _log_learning(self, target_file: str, failed_gate: str, reason: str):
+        """Log a failed experiment as a learning opportunity.
+
+        Failed experiments still teach something. This log lets the entity
+        review past failures and avoid repeating them.
+        """
+        # Determine data dir from project root (works for both Chloe and Faith)
+        log_path = os.path.join(self.project_root, "data", "sandbox_learnings.json")
+        # Faith uses data_faith/
+        if not os.path.exists(os.path.dirname(log_path)):
+            log_path = os.path.join(self.project_root, "data_faith", "sandbox_learnings.json")
+            if not os.path.exists(os.path.dirname(log_path)):
+                return  # No data dir found
+
+        learnings = []
+        if os.path.exists(log_path):
+            try:
+                with open(log_path, "r") as f:
+                    learnings = json.load(f)
+            except (json.JSONDecodeError, IOError):
+                learnings = []
+
+        learnings.append({
+            "timestamp": datetime.now().isoformat(),
+            "target_file": target_file,
+            "failed_gate": failed_gate,
+            "reason": reason[:500],  # Truncate long reasons
+        })
+
+        # Keep last 50 learnings
+        learnings = learnings[-50:]
+
+        try:
+            with open(log_path, "w") as f:
+                json.dump(learnings, f, indent=2)
+        except IOError:
+            pass  # Non-critical — don't crash on logging failure

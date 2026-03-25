@@ -210,9 +210,9 @@ class Experimenter:
 
         # --- CEILING CHECK ---
         # If ALL categories are above the ceiling threshold, experimenting
-        # is pointless.  Return None so the agent picks a different action
-        # instead of grinding inconclusive experiments forever.
-        CEILING_THRESHOLD = 95.0
+        # is pointless — unless some are stale (no experiment in 7+ days).
+        CEILING_THRESHOLD = 85.0
+        STALE_DAYS = 7  # Re-eligible after 7 days without an experiment
         categories = scores.get("categories", {})
         min_score = min(
             (d["percentage"] for d in categories.values()),
@@ -220,8 +220,30 @@ class Experimenter:
         )
         print(f"  [experiment] Score range: min={min_score:.0f}%, weakest={weakest_cat}")
         if min_score >= CEILING_THRESHOLD:
-            print(f"  [experiment] All categories at {CEILING_THRESHOLD}%+ — nothing to improve")
-            return None
+            # Check if any category is stale (no experiment in STALE_DAYS)
+            from datetime import datetime, timedelta
+            cutoff = datetime.now() - timedelta(days=STALE_DAYS)
+            has_stale = False
+            for cat_name in categories:
+                last_attempt = None
+                for exp in history:
+                    if exp.get("target_category") == cat_name:
+                        last_attempt = exp.get("timestamp")
+                        break  # history is most-recent-first
+                if last_attempt:
+                    try:
+                        if datetime.fromisoformat(last_attempt) < cutoff:
+                            has_stale = True
+                            break
+                    except (ValueError, TypeError):
+                        pass
+                else:
+                    has_stale = True  # Never attempted = stale
+                    break
+            if not has_stale:
+                print(f"  [experiment] All categories at {CEILING_THRESHOLD}%+ — nothing to improve")
+                return None
+            print(f"  [experiment] All at ceiling but some stale — re-engaging")
 
         # --- FAILURE AVOIDANCE ---
         # If we've failed too many times on a category recently, try a different one.
@@ -777,12 +799,12 @@ class Experimenter:
         rotate to a different category. This prevents grinding one
         category for hours when progress has stalled.
 
-        Categories scoring >= CEILING (95%) are skipped entirely — there
-        is no meaningful room for improvement and experiments on them
-        almost always come back inconclusive.
+        Categories scoring >= CEILING (85%) are skipped — unless they haven't
+        been attempted in 7+ days (skills may have improved since last try).
         """
         MAX_CONSECUTIVE_FAILURES = 5  # Give up on a category after 5 straight failures
-        CEILING = 95.0  # Skip categories already at or above this score
+        CEILING = 85.0  # Skip categories already at or above this score
+        STALE_DAYS = 7  # Re-eligible after 7 days without an experiment
 
         categories = scores.get("categories", {})
 
@@ -790,7 +812,22 @@ class Experimenter:
         def _is_eligible(cat_name: str) -> bool:
             pct = categories.get(cat_name, {}).get("percentage", 0)
             if pct >= CEILING:
-                return False
+                # Check if stale — no experiment on this category in 7+ days
+                from datetime import datetime, timedelta
+                cutoff = datetime.now() - timedelta(days=STALE_DAYS)
+                last_attempt = None
+                for exp in history:
+                    if exp.get("target_category") == cat_name:
+                        last_attempt = exp.get("timestamp")
+                        break
+                if last_attempt:
+                    try:
+                        if datetime.fromisoformat(last_attempt) >= cutoff:
+                            return False  # Recent attempt, still at ceiling
+                    except (ValueError, TypeError):
+                        return False
+                # Stale or never attempted — re-eligible
+                return True
             # Check consecutive failures
             consec = 0
             for exp in history:
